@@ -1,0 +1,304 @@
+# RNN for sentiment analysis
+
+# Load necessary libraries
+# Loading datasets
+import numpy as np
+import pandas as pd
+
+# RNN modeling
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.layers import Embedding
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import Dense
+
+# Tokenizer
+import nltk
+from nltk.stem import WordNetLemmatizer
+from nltk import word_tokenize,pos_tag
+
+# Graphs
+import matplotlib.pyplot as plt
+
+# Confusion matrix & Accuracy
+from sklearn.metrics import confusion_matrix
+
+!pip install tensorflow==v2.12.0
+
+# Import files
+from google.colab import drive
+drive.mount('/content/drive')
+
+train_data = pd.read_csv('/content/drive/MyDrive/Colab Notebooks/DataSets/IMDb_train.csv')
+test_data = pd.read_csv('/content/drive/MyDrive/Colab Notebooks/DataSets/IMDb_test.csv')
+validation_data = pd.read_csv('/content/drive/MyDrive/Colab Notebooks/DataSets/IMDb_val.csv')
+
+############# SECTION 1 - Understanding Analysis & Cleaning ###############
+
+# Drop null values
+train_data.dropna()
+train_data
+
+# Select review array for train
+train_review = train_data["review"]
+
+# Select review array for test portion
+test_review = test_data["review"]
+test_review
+
+# Select sentiment array for train
+train_sentiment = train_data["sentiment"]
+
+# Select sentiment array for test portion
+test_sentiment = test_data["sentiment"]
+test_sentiment
+
+# In training dataset,
+# Total reviews = 35000
+# Positive review = 17500
+# Negative review = 17500
+# So, the outputs are balanced
+
+print("Number of reviews in train: ")
+len(train_review)
+
+# In test dataset,
+# Total reviews = 10000
+
+print("Number of review in test: ")
+len(test_review)
+
+# Manual remove some special characters
+for i in range(len(train_review)):
+  train_review[i] = train_review[i].replace("<br /><br />", "")
+  train_review[i] = train_review[i].replace("/>", "")
+  train_review[i] = train_review[i].replace("(", "")
+  train_review[i] = train_review[i].replace(")", "")
+  train_review[i] = train_review[i].replace('"', '')
+  train_review[i] = train_review[i].replace(",", "")
+  train_review[i] = train_review[i].replace(".", "")
+  train_review[i] = train_review[i].replace("-", "")
+  
+ # Manual remove some special characters
+for i in range(len(test_review)):
+  test_review[i] = test_review[i].replace("<br /><br />", "")
+  test_review[i] = test_review[i].replace("/>", "")
+  test_review[i] = test_review[i].replace("(", "")
+  test_review[i] = test_review[i].replace(")", "")
+  test_review[i] = test_review[i].replace('"', '')
+  test_review[i] = test_review[i].replace(",", "")
+  test_review[i] = test_review[i].replace(".", "")
+  test_review[i] = test_review[i].replace("-", "")
+  
+# Validate removal of special characters in reviews
+train_review[0]
+
+# Split the words contained in the list
+train_review = [text.split() for text in train_review]
+test_review = [text.split() for text in test_review]
+
+# Convert each word into lowercase
+train_review2 = []
+for i in train_review:
+  train_review2.append([text.lower() for text in i])
+
+test_review2 = []
+for i in test_review:
+  test_review2.append([text.lower() for text in i])
+  
+train_review1 = train_review2
+train_review3 = train_review2
+train_review = train_review3
+
+test_review = test_review2
+
+# A function to use lemmatization on dataset
+nltk.download('averaged_perceptron_tagger')
+nltk.download('wordnet')
+
+def lemmatization(token_text):
+  """
+  This function performs the lemmatization operations as explained above.
+  Input Args:
+  token_text: list of tokens.
+  Returns:
+  lemmatized_tokens: list of lemmatized tokens.
+  """
+  lemma_tokens = []
+  wordnet = WordNetLemmatizer()
+  lemmatized_tokens = [wordnet.lemmatize(token, pos = 'v') for token in token_text]
+  
+  return lemmatized_tokens
+
+# Implementation of lemmatization on dataset
+for i in range(len(train_review)):
+  train_review[i] = lemmatization(train_review[i])
+
+for j in range(len(test_review)):
+  test_review[j] = lemmatization(test_review[j])
+
+# Create an object for tokenizer() method
+tokenizer = Tokenizer()
+# tokenize our review text normal array
+tokenizer.fit_on_texts(train_review)
+# Select the dictionary of the corpus & its indexes
+word_index = tokenizer.word_index
+### Total unique words = 105507 before lemmatization
+### Total unique words = 201318 after lemmatization ?!^&#(!)
+word_index                
+
+# Encode all words in reviews to numbers
+for i in range(len(train_review)):
+  for j in range(len(train_review[i])):
+    if (train_review[i][j] in word_index.keys()):
+      train_review[i][j] = word_index[train_review[i][j]]
+    else:
+      train_review[i][j] = 0
+
+for i in range(len(test_review)):
+  for j in range(len(test_review[i])):
+    if (test_review[i][j] in word_index.keys()):
+      test_review[i][j] = word_index[test_review[i][j]]
+    else:
+      test_review[i][j] = 0
+ 
+# Validate encoding Train
+
+# Print first 5 encoded words 
+for i in range(len(train_review[0])):
+  print(train_review[0][i])
+
+# Check the word is correclty being encoded
+print("The first word 'having' is encoded into: ")
+word_index['avoid']
+
+# Adding padding of zeros
+train_review = keras.preprocessing.sequence.pad_sequences(train_review, value=0, padding='post', maxlen=300)
+
+test_review = keras.preprocessing.sequence.pad_sequences(test_review, value=0, padding='post', maxlen=300)
+
+################# SECTION 2 - BUILD MODEL ####################
+# Model Iteration 1
+
+embedding_vector_features = 300
+voc_size = 204279
+model = Sequential()
+model.add(Embedding(voc_size, embedding_vector_features, input_length= 300))
+model.add(LSTM(300))
+model.add(Dense(1, activation='sigmoid'))
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+print(model.summary())
+
+# Model Iteration 2
+
+embedding_vector_features = 300
+voc_size = 201323
+model = Sequential()
+model.add(Embedding(voc_size, embedding_vector_features, input_length= 300))
+model.add(LSTM(350))
+model.add(Dense(1, activation='sigmoid'))
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+print(model.summary())
+
+X_train = train_review
+Y_train = train_sentiment
+
+X_test = test_review
+Y_test = test_sentiment
+
+################### SECTION 3 - TRAINING THE MODEL ####################
+
+# Training Iteration 1
+overview0 = model.fit(X_train, Y_train, validation_data=(X_test, Y_test), epochs=5, batch_size=10)
+
+# Training Iteration 2
+overview = model.fit(X_train, Y_train, validation_data=(X_test, Y_test), epochs=5, batch_size=50)
+
+# Graph Iteration 1
+
+acc = overview0.history['accuracy']
+val_acc = overview0.history['val_accuracy']
+
+loss = overview0.history['loss']
+val_loss = overview0.history['val_loss']
+
+epochs_range = range(5)
+
+plt.figure(figsize=(8, 8))
+plt.subplot(1, 2, 1)
+plt.plot(epochs_range, acc, label='Training Accuracy')
+plt.plot(epochs_range, val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.title('Training and Validation Accuracy')
+
+plt.subplot(1, 2, 2)
+plt.plot(epochs_range, loss, label='Training Loss')
+plt.plot(epochs_range, val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.title('Training and Validation Loss')
+plt.show()
+
+# Graph Iteration 2
+
+acc = overview.history['accuracy']
+val_acc = overview.history['val_accuracy']
+
+loss = overview.history['loss']
+val_loss = overview.history['val_loss']
+
+epochs_range = range(5)
+
+plt.figure(figsize=(8, 8))
+plt.subplot(1, 2, 1)
+plt.plot(epochs_range, acc, label='Training Accuracy')
+plt.plot(epochs_range, val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.title('Training and Validation Accuracy')
+
+plt.subplot(1, 2, 2)
+plt.plot(epochs_range, loss, label='Training Loss')
+plt.plot(epochs_range, val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.title('Training and Validation Loss')
+plt.show()
+
+################### SECTION 4 - EVALUATION ###################
+
+# Fetch the predicted values of the model Iteration 1
+train_review_predicted1 = model.predict(train_review)
+print(train_review_predicted1)
+
+# Since the dataset was balanced, confusion matrix was used to evaluate the model
+
+# Clean the predicted values of the model Iteration 1
+for i in range(len(train_review_predicted1)):
+  if (train_review_predicted1[i] < 0.5):
+    train_review_predicted1[i] = 0
+  else:
+    train_review_predicted1[i] = 1
+
+train_review_predicted1
+
+# Validate the predicted values of model Iteration 1
+np.unique(train_review_predicted1, axis=0)
+
+# Fetch the elements of the confusion matrix
+tn1, fp1, fn1, tp1 = confusion_matrix(train_sentiment, train_review_predicted1, labels=[0,1]).ravel()
+
+print(tn1, fp1, fn1, tp1)
+
+# Calculate the Accuracy given the formula
+accuracy1 = (tp1 + tn1) / 35000
+accuracy1
+
+################### SECTION 5 - RESULTS & PREDICTION ##################
+
+"""
+1) I have come to notice that even when the hyper parameters are same, the results may come out to be different.
+2) The metrics 'Accuracy' can be used on datasets that have a balanced set of outputs.
+3) 'Adam' is the most widely used optimizer.
+4) Without the use of the RE library, data can still be cleaned manually.
+5) With this much of effort, the accuracy came out to be a astounding 99.82% in predicting the sentiment.
+"""
